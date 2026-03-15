@@ -1,17 +1,31 @@
-const $ = (sel) => document.querySelector(sel);
+var session = null;
+var vocabMap = {};
+var selectWords = null;
+var thresholds = {};
+var modelConfig = {};
+var lastMeanProb = null;
 
-let thresholdsCache = null;
-let lastMeanProb    = null;
+function $(sel) { return document.querySelector(sel); }
 
 function setStatus(msg, cls) {
-  const el = $("#status");
+  var el = $("#status");
   el.textContent = msg;
   el.className = "status " + (cls || "");
 }
 
-function probBg(p, alpha) {
-  const hue = (1 - p) * 120;
-  return `hsla(${hue},75%,40%,${alpha || 0.35})`;
+function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
+
+function chunkColor(p) {
+  // Muted: green (human) → yellow (uncertain) → red (AI)
+  // Keep saturation and lightness low for readability
+  var hue = (1 - p) * 120; // 120=green, 0=red
+  var sat = 35 + p * 20;   // 35–55%
+  var lit = 88 - p * 18;   // 88–70% (light theme friendly)
+  if (document.body.classList.contains("dark")) {
+    sat = 30 + p * 25;     // 30–55%
+    lit = 22 + p * 10;     // 22–32%
+  }
+  return "hsl(" + hue + "," + sat + "%," + lit + "%)";
 }
 
 function escapeHtml(s) {
@@ -19,42 +33,64 @@ function escapeHtml(s) {
 }
 
 function getThreshold() {
-  if (!thresholdsCache) return { fpr: 0.01, threshold: 0.5 };
-  const fpr = $("#fpr-select").value;
-  const t = thresholdsCache[fpr] || thresholdsCache["0.01"];
+  var fpr = $("#fpr-select").value;
+  var t = thresholds[fpr] || thresholds["0.01"];
   return { fpr: parseFloat(fpr), threshold: t.threshold };
 }
 
-function showResults(data) {
-  if (data.error) {
-    setStatus(data.error, "error");
-    return;
+// ── Inference ─────────────────────────────────────────────
+
+function runInference(chunks) {
+  var B = chunks.length;
+  var L = modelConfig.max_len;
+  var buf = new BigInt64Array(B * L); // zero-filled = PAD
+
+  for (var i = 0; i < B; i++) {
+    for (var j = 0; j < chunks[i].length; j++) {
+      buf[i * L + j] = BigInt(chunks[i][j]);
+    }
   }
 
-  thresholdsCache = data.thresholds;
-  lastMeanProb    = data.meanProb;
+  var input = new ort.Tensor("int64", buf, [B, L]);
+  return session.run({ input_ids: input }).then(function(output) {
+    var logits = output.logits.data;
+    var probs = [];
+    for (var k = 0; k < logits.length; k++) {
+      probs.push(sigmoid(logits[k]));
+    }
+    return probs;
+  });
+}
 
-  const { threshold, fpr } = getThreshold();
-  const isAI = data.meanProb >= threshold;
-  const pct  = (data.meanProb * 100).toFixed(2);
+// ── Display ───────────────────────────────────────────────
 
-  const v = $("#verdict");
+function showResults(meanProb, wordProbs, displayWords, numChunks) {
+  lastMeanProb = meanProb;
+  var info = getThreshold();
+  var isAI = meanProb >= info.threshold;
+  var pct = (meanProb * 100).toFixed(2);
+
+  var v = $("#verdict");
   v.textContent = isAI ? "AI-Generated" : "Human-Written";
-  v.className   = isAI ? "ai" : "human";
+  v.className = isAI ? "ai" : "human";
 
-  const bar = $("#prob-bar");
-  bar.style.width      = `${pct}%`;
-  bar.style.background = probBg(data.meanProb, 0.8);
+  var bar = $("#prob-bar");
+  bar.style.width = pct + "%";
+  bar.style.background = chunkColor(meanProb);
 
   $("#prob-label").textContent =
-    `${pct}% · ${data.numChunks} chunk${data.numChunks > 1 ? "s" : ""} · threshold ${(threshold * 100).toFixed(2)}%`;
+    pct + "% \u00b7 " + numChunks + " chunk" + (numChunks > 1 ? "s" : "") +
+    " \u00b7 threshold " + (info.threshold * 100).toFixed(2) + "%";
 
-  let html = "";
-  for (let i = 0; i < data.displayWords.length; i++) {
-    const w = data.displayWords[i];
-    const p = data.wordProbs[i];
-    const space = (i > 0) ? " " : "";
-    html += `<span style="background:${probBg(p, 0.35)}">${space}${escapeHtml(w)}</span>`;
+  // Build chunk-coloured text: every character (including spaces) gets the colour
+  var html = "";
+  for (var i = 0; i < displayWords.length; i++) {
+    var w = displayWords[i];
+    var p = wordProbs[i];
+    var bg = chunkColor(p);
+    var space = (i > 0) ? " " : "";
+    // Wrap space and word together in one span so colour is continuous
+    html += '<span style="background:' + bg + '">' + space + escapeHtml(w) + '</span>';
   }
   $("#chunk-viz").innerHTML = html;
 
@@ -63,102 +99,137 @@ function showResults(data) {
 }
 
 function updateVerdict() {
-  if (lastMeanProb === null || !thresholdsCache) return;
-  const { threshold, fpr } = getThreshold();
-  const isAI = lastMeanProb >= threshold;
-  const v = $("#verdict");
+  if (lastMeanProb === null) return;
+  var info = getThreshold();
+  var isAI = lastMeanProb >= info.threshold;
+  var v = $("#verdict");
   v.textContent = isAI ? "AI-Generated" : "Human-Written";
-  v.className   = isAI ? "ai" : "human";
+  v.className = isAI ? "ai" : "human";
   $("#prob-label").textContent =
-    `${(lastMeanProb * 100).toFixed(2)}% · threshold ${(threshold * 100).toFixed(2)}%`;
+    (lastMeanProb * 100).toFixed(2) + "% \u00b7 threshold " +
+    (info.threshold * 100).toFixed(2) + "%";
 }
 
-async function analyze() {
-  const text = $("#text-input").value.trim();
-  if (!text) return;
+// ── Analyze ───────────────────────────────────────────────
+
+function analyze() {
+  var text = $("#text-input").value.trim();
+  if (!text || !session) return;
 
   $("#analyze-btn").disabled = true;
-  setStatus("Analyzing…");
+  setStatus("Analyzing\u2026");
   $("#results").classList.add("hidden");
 
-  chrome.runtime.sendMessage(
-    { type: "okhra-analyze", text },
-    (response) => {
-      if (chrome.runtime.lastError) {
-        setStatus("Error: " + chrome.runtime.lastError.message, "error");
-      } else {
-        showResults(response);
-      }
+  try {
+    var result = tokenizeText(text, selectWords);
+    var tokens = result.tokens;
+    var displayWords = result.displayWords;
+    var indices = tokensToIndices(tokens, vocabMap, modelConfig.unk_idx);
+
+    if (indices.length === 0) {
+      setStatus("Text too short after tokenisation.", "error");
       $("#analyze-btn").disabled = false;
+      return;
     }
-  );
+
+    var chunked = chunkIndices(indices, modelConfig.max_len, modelConfig.overlap);
+    var chunks = chunked.chunks;
+    var starts = chunked.starts;
+
+    runInference(chunks).then(function(probs) {
+      var wordProbs = mapChunkProbsToWords(probs, starts, chunks, displayWords.length);
+      var sum = 0;
+      for (var i = 0; i < probs.length; i++) sum += probs[i];
+      var meanProb = sum / probs.length;
+      showResults(meanProb, wordProbs, displayWords, probs.length);
+      $("#analyze-btn").disabled = false;
+    }).catch(function(e) {
+      setStatus("Inference error: " + e.message, "error");
+      console.error(e);
+      $("#analyze-btn").disabled = false;
+    });
+  } catch (e) {
+    setStatus("Error: " + e.message, "error");
+    console.error(e);
+    $("#analyze-btn").disabled = false;
+  }
 }
 
 // ── Theme ─────────────────────────────────────────────────
 
 function applyTheme(theme) {
-  document.body.classList.toggle("light", theme === "light");
-  chrome.storage.local.set({ theme });
+  if (theme === "dark") {
+    document.body.classList.add("dark");
+  } else {
+    document.body.classList.remove("dark");
+  }
+  chrome.storage.local.set({ theme: theme });
 }
 
 // ── Init ──────────────────────────────────────────────────
 
-document.addEventListener("DOMContentLoaded", async () => {
-  // Restore theme
-  const { theme } = await chrome.storage.local.get("theme");
-  if (theme === "light") applyTheme("light");
+function loadJSON(path) {
+  return fetch(chrome.runtime.getURL(path)).then(function(res) {
+    if (!res.ok) throw new Error("Failed to load " + path);
+    return res.json();
+  });
+}
 
-  // Check if background model is ready
-  chrome.runtime.sendMessage({ type: "okhra-status" }, (res) => {
-    if (chrome.runtime.lastError) {
-      setStatus("Background not ready — reopen in a moment", "error");
-      return;
-    }
-    if (res && res.ready) {
-      $("#analyze-btn").disabled = false;
-      setStatus("Ready", "ready");
-    } else {
-      setStatus("Model loading…");
-      // Poll until ready
-      const poll = setInterval(() => {
-        chrome.runtime.sendMessage({ type: "okhra-status" }, (r) => {
-          if (r && r.ready) {
-            clearInterval(poll);
-            $("#analyze-btn").disabled = false;
-            setStatus("Ready", "ready");
-          }
-        });
-      }, 500);
-    }
+document.addEventListener("DOMContentLoaded", function() {
+  // Restore theme (default = light)
+  chrome.storage.local.get("theme", function(data) {
+    if (data.theme === "dark") applyTheme("dark");
   });
 
-  // Check for pending context-menu text
-  const stored = await chrome.storage.local.get(["pendingText"]);
-  if (stored.pendingText) {
-    $("#text-input").value = stored.pendingText;
-    chrome.storage.local.remove(["pendingText"]);
+  // Load model assets
+  Promise.all([
+    loadJSON("model/vocab.json"),
+    loadJSON("model/select_words.json"),
+    loadJSON("model/thresholds.json"),
+    loadJSON("model/model_config.json")
+  ]).then(function(results) {
+    vocabMap = results[0];
+    selectWords = new Set(results[1]);
+    thresholds = results[2];
+    modelConfig = results[3];
 
-    // Wait for model then auto-analyze
-    const waitAndAnalyze = () => {
-      chrome.runtime.sendMessage({ type: "okhra-status" }, (r) => {
-        if (r && r.ready) {
-          analyze();
-        } else {
-          setTimeout(waitAndAnalyze, 300);
-        }
-      });
-    };
-    waitAndAnalyze();
-  }
+    setStatus("Loading ONNX model\u2026");
+
+    ort.env.wasm.wasmPaths = chrome.runtime.getURL("lib/");
+    ort.env.wasm.numThreads = 1;
+    ort.env.wasm.simd = true;
+
+    return ort.InferenceSession.create(
+      chrome.runtime.getURL("model/model.onnx"),
+      { executionProviders: ["wasm"], graphOptimizationLevel: "all" }
+    );
+  }).then(function(sess) {
+    session = sess;
+    $("#analyze-btn").disabled = false;
+    setStatus("Ready", "ready");
+
+    // Check for pending right-click text
+    chrome.storage.local.get(["pendingText"], function(stored) {
+      if (stored.pendingText) {
+        $("#text-input").value = stored.pendingText;
+        chrome.storage.local.remove(["pendingText"]);
+        chrome.action.setBadgeText({ text: "" });
+        analyze();
+      }
+    });
+  }).catch(function(e) {
+    setStatus("Load failed: " + e.message, "error");
+    console.error(e);
+  });
 
   // Events
   $("#analyze-btn").addEventListener("click", analyze);
-  $("#text-input").addEventListener("keydown", (e) => {
+  $("#text-input").addEventListener("keydown", function(e) {
     if (e.key === "Enter" && e.ctrlKey) analyze();
   });
   $("#fpr-select").addEventListener("change", updateVerdict);
-  $("#theme-toggle").addEventListener("click", () => {
-    const isLight = document.body.classList.contains("light");
-    applyTheme(isLight ? "dark" : "light");
+  $("#theme-toggle").addEventListener("click", function() {
+    var isDark = document.body.classList.contains("dark");
+    applyTheme(isDark ? "light" : "dark");
   });
 });
