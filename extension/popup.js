@@ -3,7 +3,7 @@ var vocabMap = {};
 var selectWords = null;
 var thresholds = {};
 var modelConfig = {};
-var lastMeanProb = null;
+var lastResult = null;
 
 function $(sel) { return document.querySelector(sel); }
 
@@ -14,17 +14,6 @@ function setStatus(msg, cls) {
 }
 
 function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
-
-function chunkColor(p) {
-  var hue = (1 - p) * 120; 
-  var sat = 35 + p * 20;   
-  var lit = 88 - p * 18;  
-  if (document.body.classList.contains("dark")) {
-    sat = 30 + p * 25;    
-    lit = 22 + p * 10;  
-  }
-  return "hsl(" + hue + "," + sat + "%," + lit + "%)";
-}
 
 function escapeHtml(s) {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -37,10 +26,38 @@ function getThreshold() {
 }
 
 
+function wordColor(p, threshold) {
+  if (p < threshold) return "transparent";
+  var range = 1.0 - threshold;
+  var t = range > 0 ? (p - threshold) / range : 1;
+  if (t > 1) t = 1;
+  var alpha = 0.15 + t * 0.40; 
+  var isDark = document.body.classList.contains("dark");
+  if (isDark) {
+    return "rgba(190,50,50," + alpha.toFixed(3) + ")";
+  }
+  return "rgba(200,45,45," + alpha.toFixed(3) + ")";
+}
+
+function confidenceLabel(meanProb, threshold) {
+  if (meanProb < threshold) {
+    var dist = threshold - meanProb;
+    if (dist > 0.3) return "High confidence";
+    if (dist > 0.1) return "Moderate confidence";
+    return "Low confidence";
+  } else {
+    var dist = meanProb - threshold;
+    if (dist > 0.3) return "High confidence";
+    if (dist > 0.1) return "Moderate confidence";
+    return "Low confidence";
+  }
+}
+
+
 function runInference(chunks) {
   var B = chunks.length;
   var L = modelConfig.max_len;
-  var buf = new BigInt64Array(B * L); 
+  var buf = new BigInt64Array(B * L);
 
   for (var i = 0; i < B; i++) {
     for (var j = 0; j < chunks[i].length; j++) {
@@ -59,30 +76,23 @@ function runInference(chunks) {
   });
 }
 
-
-function showResults(meanProb, wordProbs, displayWords, numChunks) {
-  lastMeanProb = meanProb;
+function showResults() {
+  if (!lastResult) return;
+  var data = lastResult;
   var info = getThreshold();
-  var isAI = meanProb >= info.threshold;
-  var pct = (meanProb * 100).toFixed(2);
+  var isAI = data.meanProb >= info.threshold;
 
   var v = $("#verdict");
   v.textContent = isAI ? "AI-Generated" : "Human-Written";
   v.className = isAI ? "ai" : "human";
 
-  var bar = $("#prob-bar");
-  bar.style.width = pct + "%";
-  bar.style.background = chunkColor(meanProb);
-
-  $("#prob-label").textContent =
-    pct + "% \u00b7 " + numChunks + " chunk" + (numChunks > 1 ? "s" : "") +
-    " \u00b7 threshold " + (info.threshold * 100).toFixed(2) + "%";
+  $("#confidence").textContent = confidenceLabel(data.meanProb, info.threshold);
 
   var html = "";
-  for (var i = 0; i < displayWords.length; i++) {
-    var w = displayWords[i];
-    var p = wordProbs[i];
-    var bg = chunkColor(p);
+  for (var i = 0; i < data.displayWords.length; i++) {
+    var w = data.displayWords[i];
+    var p = data.wordProbs[i];
+    var bg = wordColor(p, info.threshold);
     var space = (i > 0) ? " " : "";
     html += '<span style="background:' + bg + '">' + space + escapeHtml(w) + '</span>';
   }
@@ -92,18 +102,7 @@ function showResults(meanProb, wordProbs, displayWords, numChunks) {
   $("#results").classList.remove("hidden");
 }
 
-function updateVerdict() {
-  if (lastMeanProb === null) return;
-  var info = getThreshold();
-  var isAI = lastMeanProb >= info.threshold;
-  var v = $("#verdict");
-  v.textContent = isAI ? "AI-Generated" : "Human-Written";
-  v.className = isAI ? "ai" : "human";
-  $("#prob-label").textContent =
-    (lastMeanProb * 100).toFixed(2) + "% \u00b7 threshold " +
-    (info.threshold * 100).toFixed(2) + "%";
-}
-
+// ── Analyze ───────────────────────────────────────────────
 
 function analyze() {
   var text = $("#text-input").value.trim();
@@ -120,7 +119,7 @@ function analyze() {
     var indices = tokensToIndices(tokens, vocabMap, modelConfig.unk_idx);
 
     if (indices.length === 0) {
-      setStatus("Text too short after tokenisation.", "error");
+      setStatus("Text too short.", "error");
       $("#analyze-btn").disabled = false;
       return;
     }
@@ -134,7 +133,13 @@ function analyze() {
       var sum = 0;
       for (var i = 0; i < probs.length; i++) sum += probs[i];
       var meanProb = sum / probs.length;
-      showResults(meanProb, wordProbs, displayWords, probs.length);
+
+      lastResult = {
+        meanProb: meanProb,
+        wordProbs: wordProbs,
+        displayWords: displayWords
+      };
+      showResults();
       $("#analyze-btn").disabled = false;
     }).catch(function(e) {
       setStatus("Inference error: " + e.message, "error");
@@ -156,6 +161,7 @@ function applyTheme(theme) {
     document.body.classList.remove("dark");
   }
   chrome.storage.local.set({ theme: theme });
+  if (lastResult) showResults();
 }
 
 
@@ -182,7 +188,7 @@ document.addEventListener("DOMContentLoaded", function() {
     thresholds = results[2];
     modelConfig = results[3];
 
-    setStatus("please wait...\u2026");
+    setStatus("Loading...\u2026");
 
     ort.env.wasm.wasmPaths = chrome.runtime.getURL("lib/");
     ort.env.wasm.numThreads = 1;
@@ -214,7 +220,9 @@ document.addEventListener("DOMContentLoaded", function() {
   $("#text-input").addEventListener("keydown", function(e) {
     if (e.key === "Enter" && e.ctrlKey) analyze();
   });
-  $("#fpr-select").addEventListener("change", updateVerdict);
+  $("#fpr-select").addEventListener("change", function() {
+    if (lastResult) showResults();
+  });
   $("#theme-toggle").addEventListener("click", function() {
     var isDark = document.body.classList.contains("dark");
     applyTheme(isDark ? "light" : "dark");
