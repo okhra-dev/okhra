@@ -16,14 +16,12 @@ function setStatus(msg, cls) {
 function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
 
 function chunkColor(p) {
-  // Muted: green (human) → yellow (uncertain) → red (AI)
-  // Keep saturation and lightness low for readability
-  var hue = (1 - p) * 120; // 120=green, 0=red
-  var sat = 35 + p * 20;   // 35–55%
-  var lit = 88 - p * 18;   // 88–70% (light theme friendly)
+  var hue = (1 - p) * 120; 
+  var sat = 35 + p * 20;   
+  var lit = 88 - p * 18;  
   if (document.body.classList.contains("dark")) {
-    sat = 30 + p * 25;     // 30–55%
-    lit = 22 + p * 10;     // 22–32%
+    sat = 30 + p * 25;    
+    lit = 22 + p * 10;  
   }
   return "hsl(" + hue + "," + sat + "%," + lit + "%)";
 }
@@ -38,12 +36,11 @@ function getThreshold() {
   return { fpr: parseFloat(fpr), threshold: t.threshold };
 }
 
-// ── Inference ─────────────────────────────────────────────
 
 function runInference(chunks) {
   var B = chunks.length;
   var L = modelConfig.max_len;
-  var buf = new BigInt64Array(B * L); // zero-filled = PAD
+  var buf = new BigInt64Array(B * L); 
 
   for (var i = 0; i < B; i++) {
     for (var j = 0; j < chunks[i].length; j++) {
@@ -62,7 +59,6 @@ function runInference(chunks) {
   });
 }
 
-// ── Display ───────────────────────────────────────────────
 
 function showResults(meanProb, wordProbs, displayWords, numChunks) {
   lastMeanProb = meanProb;
@@ -82,14 +78,12 @@ function showResults(meanProb, wordProbs, displayWords, numChunks) {
     pct + "% \u00b7 " + numChunks + " chunk" + (numChunks > 1 ? "s" : "") +
     " \u00b7 threshold " + (info.threshold * 100).toFixed(2) + "%";
 
-  // Build chunk-coloured text: every character (including spaces) gets the colour
   var html = "";
   for (var i = 0; i < displayWords.length; i++) {
     var w = displayWords[i];
     var p = wordProbs[i];
     var bg = chunkColor(p);
     var space = (i > 0) ? " " : "";
-    // Wrap space and word together in one span so colour is continuous
     html += '<span style="background:' + bg + '">' + space + escapeHtml(w) + '</span>';
   }
   $("#chunk-viz").innerHTML = html;
@@ -110,7 +104,6 @@ function updateVerdict() {
     (info.threshold * 100).toFixed(2) + "%";
 }
 
-// ── Analyze ───────────────────────────────────────────────
 
 function analyze() {
   var text = $("#text-input").value.trim();
@@ -155,7 +148,6 @@ function analyze() {
   }
 }
 
-// ── Theme ─────────────────────────────────────────────────
 
 function applyTheme(theme) {
   if (theme === "dark") {
@@ -166,7 +158,6 @@ function applyTheme(theme) {
   chrome.storage.local.set({ theme: theme });
 }
 
-// ── Init ──────────────────────────────────────────────────
 
 function loadJSON(path) {
   return fetch(chrome.runtime.getURL(path)).then(function(res) {
@@ -176,12 +167,10 @@ function loadJSON(path) {
 }
 
 document.addEventListener("DOMContentLoaded", function() {
-  // Restore theme (default = light)
   chrome.storage.local.get("theme", function(data) {
     if (data.theme === "dark") applyTheme("dark");
   });
 
-  // Load model assets
   Promise.all([
     loadJSON("model/vocab.json"),
     loadJSON("model/select_words.json"),
@@ -193,7 +182,7 @@ document.addEventListener("DOMContentLoaded", function() {
     thresholds = results[2];
     modelConfig = results[3];
 
-    setStatus("Loading ONNX model\u2026");
+    setStatus("please wait...\u2026");
 
     ort.env.wasm.wasmPaths = chrome.runtime.getURL("lib/");
     ort.env.wasm.numThreads = 1;
@@ -208,7 +197,6 @@ document.addEventListener("DOMContentLoaded", function() {
     $("#analyze-btn").disabled = false;
     setStatus("Ready", "ready");
 
-    // Check for pending right-click text
     chrome.storage.local.get(["pendingText"], function(stored) {
       if (stored.pendingText) {
         $("#text-input").value = stored.pendingText;
@@ -222,7 +210,6 @@ document.addEventListener("DOMContentLoaded", function() {
     console.error(e);
   });
 
-  // Events
   $("#analyze-btn").addEventListener("click", analyze);
   $("#text-input").addEventListener("keydown", function(e) {
     if (e.key === "Enter" && e.ctrlKey) analyze();
