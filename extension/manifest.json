@@ -9,7 +9,10 @@
     "default_icon": { "48": "icons/okhra_48px.png" }
   },
   "icons": { "48": "icons/okhra_48px.png" },
-  "background": { "service_worker": "background.js" },
+    "background": {
+    "scripts": ["background.js"],
+    "service_worker": "background.js"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
@@ -20,7 +23,7 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "okhra@detector",
-      "strict_min_version": "121.0"
+      "strict_min_version": "128.0"
     }
   }
 }
