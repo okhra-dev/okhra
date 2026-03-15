@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <!-- HEADER -->
+  <div class="header">
+    <img src="icons/okhra.png" alt="Okhra" width="28" height="28" />
+    <span class="title">Okhra</span>
+    <select id="fpr-select" title="Target false-positive rate">
+      <option value="0.001">FPR ≤ 0.1 %</option>
+      <option value="0.005">FPR ≤ 0.5 %</option>
+      <option value="0.01" selected>FPR ≤ 1 %</option>
+    </select>
+  </div>
+
+  <!-- INPUT -->
+  <textarea id="text-input" rows="6"
+            placeholder="Paste or type text here…"></textarea>
+  <button id="analyze-btn" disabled>Analyze</button>
+
+  <!-- STATUS -->
+  <div id="status" class="status">Loading model…</div>
+
+  <!-- RESULTS -->
+  <div id="results" class="hidden">
+    <div id="verdict"></div>
+    <div id="prob-bar-wrap"><div id="prob-bar"></div></div>
+    <div id="prob-label"></div>
+    <details open>
+      <summary>Chunk-coloured text
+        <span id="chunk-count"></span></summary>
+      <div id="chunk-viz"></div>
+    </details>
+  </div>
+
+  <script src="lib/ort.min.js"></script>
+  <script src="tokenizer.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
