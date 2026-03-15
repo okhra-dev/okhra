@@ -9,9 +9,9 @@
     <span class="title">Okhra</span>
     <div class="controls">
       <select id="fpr-select" title="Target FPR">
-        <option value="0.001">0.1 %</option>
-        <option value="0.005">0.5 %</option>
-        <option value="0.01" selected>1 %</option>
+        <option value="0.001">0.1%</option>
+        <option value="0.005">0.5%</option>
+        <option value="0.01" selected>1%</option>
       </select>
       <button id="theme-toggle" title="Toggle theme">◑</button>
     </div>
@@ -21,7 +21,7 @@
             placeholder="Paste text here… (Ctrl+Enter to analyze)"></textarea>
   <button id="analyze-btn" disabled>Analyze</button>
 
-  <div id="status" class="status">Connecting…</div>
+  <div id="status" class="status">Loading model…</div>
 
   <div id="results" class="hidden">
     <div id="verdict"></div>
@@ -30,6 +30,8 @@
     <div id="chunk-viz"></div>
   </div>
 
+  <script src="lib/ort.min.js"></script>
+  <script src="tokenizer.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>
