@@ -24,7 +24,7 @@ function setStatus(msg, cls) {
 function sigmoid(x) { return 1 / (1 + Math.exp(-x)); }
 
 function probColor(p, alpha = 0.45) {
-  const hue = (1 - p) * 120;           
+  const hue = (1 - p) * 120;
   return `hsla(${hue},80%,42%,${alpha})`;
 }
 
@@ -43,7 +43,7 @@ function getThreshold() {
 async function runInference(chunks) {
   const B   = chunks.length;
   const L   = modelConfig.max_len;
-  const buf = new BigInt64Array(B * L);      // zero-padded (PAD=0)
+  const buf = new BigInt64Array(B * L);
 
   for (let i = 0; i < B; i++)
     for (let j = 0; j < chunks[i].length; j++)
@@ -86,12 +86,10 @@ function showResults(meanProb, wordProbs, displayWords, nChunks) {
   const { threshold, fpr } = getThreshold();
   const isAI = meanProb >= threshold;
 
-  // verdict
   const verdictEl = $("#verdict");
   verdictEl.textContent = isAI ? "AI-Generated" : "Human-Written";
   verdictEl.className   = isAI ? "ai" : "human";
 
-  // probability bar
   const bar = $("#prob-bar");
   bar.style.width      = `${(meanProb * 100).toFixed(1)}%`;
   bar.style.background = probColor(meanProb, 0.9);
@@ -100,7 +98,6 @@ function showResults(meanProb, wordProbs, displayWords, nChunks) {
     `Mean probability ${(meanProb * 100).toFixed(2)}%` +
     ` · threshold ${(threshold * 100).toFixed(2)}% (FPR ≤ ${fpr * 100}%)`;
 
-  // chunk-coloured text
   $("#chunk-count").textContent = ` (${nChunks} chunk${nChunks > 1 ? "s" : ""})`;
 
   let html = "";
@@ -118,9 +115,9 @@ function showResults(meanProb, wordProbs, displayWords, nChunks) {
 }
 
 function updateVerdict() {
-  const vizWords = $("#chunk-viz")?.querySelectorAll(".word");
-  if (!vizWords || vizWords.length === 0) return;
-  const meanProb = parseFloat($("#prob-bar").style.width) / 100;
+  const barWidth = parseFloat($("#prob-bar")?.style.width);
+  if (isNaN(barWidth)) return;
+  const meanProb = barWidth / 100;
   const { threshold, fpr } = getThreshold();
   const isAI = meanProb >= threshold;
   const v = $("#verdict");
@@ -133,27 +130,63 @@ function updateVerdict() {
 
 // ── init ─────────────────────────────────────────────────
 
+async function initORT() {
+  const libBase = chrome.runtime.getURL("lib/");
+
+  // ort.env.wasm controls where ORT looks for .wasm and .mjs files
+  ort.env.wasm.wasmPaths = libBase;
+  ort.env.wasm.numThreads = 1;                // single-thread (avoid worker issues in extensions)
+  ort.env.wasm.simd = true;                    // enable SIMD if available
+
+  // Disable features that cause dynamic import issues in extensions
+  if (ort.env.wasm.proxy !== undefined) {
+    ort.env.wasm.proxy = false;
+  }
+
+  // Disable all optional execution providers that might trigger fetches
+  if (ort.env.webgpu !== undefined) {
+    ort.env.webgpu.profilingMode = undefined;
+  }
+
+  const sessionOptions = {
+    executionProviders: ["wasm"],
+    graphOptimizationLevel: "all",
+  };
+
+  session = await ort.InferenceSession.create(
+    chrome.runtime.getURL("model/model.onnx"),
+    sessionOptions
+  );
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   try {
-    [vocabMap, selectWords, thresholds, modelConfig] = await Promise.all([
+    // Load config files in parallel
+    const [vm, sw, th, mc] = await Promise.all([
       loadJSON("model/vocab.json"),
-      loadJSON("model/select_words.json").then(a => new Set(a)),
+      loadJSON("model/select_words.json"),
       loadJSON("model/thresholds.json"),
-      loadJSON("model/model_config.json")
+      loadJSON("model/model_config.json"),
     ]);
+    vocabMap     = vm;
+    selectWords  = new Set(sw);
+    thresholds   = th;
+    modelConfig  = mc;
 
-    ort.env.wasm.wasmPaths  = chrome.runtime.getURL("lib/");
-    ort.env.wasm.numThreads = 1;
+    setStatus("Loading ONNX model…");
+    await initORT();
 
-    session = await ort.InferenceSession.create(
-      chrome.runtime.getURL("model/model.onnx"),
-      { executionProviders: ["wasm"], graphOptimizationLevel: "all" }
-    );
+    // Verify session works with a dummy input
+    const testLen = modelConfig.max_len;
+    const testBuf = new BigInt64Array(testLen);
+    testBuf[0] = 1n;
+    const testTensor = new ort.Tensor("int64", testBuf, [1, testLen]);
+    await session.run({ input_ids: testTensor });
 
     $("#analyze-btn").disabled = false;
     setStatus("Ready", "ready");
 
-    // auto-load context-menu selection
+    // Auto-load context-menu selection
     const stored = await chrome.storage.local.get(["pendingText"]);
     if (stored.pendingText) {
       $("#text-input").value = stored.pendingText;
@@ -163,7 +196,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   } catch (e) {
     setStatus("Model load failed: " + e.message, "error");
-    console.error(e);
+    console.error("Full init error:", e);
   }
 
   $("#analyze-btn").addEventListener("click", analyze);
