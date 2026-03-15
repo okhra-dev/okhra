@@ -17,6 +17,8 @@ git clone https://github.com/okhra-dev/okhra
 ```
 Then go to `about:debugging` in your browser, select `This Firefox`, then `Load Temporary Add-on...`. Navigate to the `okhra` folder and select `manifest.json`
 
+Okhra will be available to install from the web store as soon as it passes the review process.
+
 # How to use
 
 You can either select any text on the page, the right-click it and choose `Check with Okhra` or click the extension icon and paste the text in the box. Note that predictions may not be accurate for small texts (less than 100 words). You can select a false positive rate from 0.1% to 1% and toggle dark theme.
