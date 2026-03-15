@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Okhra",
+  "version": "1.0.0",
+  "description": "Detect AI-generated text",
+  "permissions": ["contextMenus", "storage"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": { "48": "icons/okhra.png" }
+  },
+  "icons": { "48": "icons/okhra.png" },
+  "background": { "service_worker": "background.js" },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
+  },
+  "web_accessible_resources": [{
+    "resources": ["model/*", "lib/*"],
+    "matches": ["<all_urls>"]
+  }],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "okhra@detector",
+      "strict_min_version": "121.0"
+    }
+  }
+}
