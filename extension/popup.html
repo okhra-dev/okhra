@@ -13,7 +13,7 @@
         <option value="0.005">FPR=0.5%</option>
         <option value="0.01" selected>FPR=1%</option>
       </select>
-      <button id="theme-toggle">◑</button>
+      <button id="theme-toggle">&#9685;</button>
     </div>
   </div>
 
@@ -21,12 +21,11 @@
             placeholder="Paste text here… (Ctrl+Enter to analyze)"></textarea>
   <button id="analyze-btn" disabled>Check</button>
 
-  <div id="status" class="status">please wait...</div>
+  <div id="status" class="status">Loading...</div>
 
   <div id="results" class="hidden">
     <div id="verdict"></div>
-    <div id="prob-bar-wrap"><div id="prob-bar"></div></div>
-    <div id="prob-label"></div>
+    <div id="confidence"></div>
     <div id="chunk-viz"></div>
   </div>
 
