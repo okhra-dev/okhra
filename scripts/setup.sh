@@ -1,18 +1,28 @@
 #!/usr/bin/env bash
-# scripts/setup.sh — download ONNX Runtime Web into extension/lib/
 set -euo pipefail
 
-ORT_VERSION="${1:-1.21.0}"
+ORT_VERSION="${1:-1.22.0}"
 LIB_DIR="$(dirname "$0")/../extension/lib"
+rm -rf "$LIB_DIR"
 mkdir -p "$LIB_DIR"
 
-BASE="https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist"
+echo "Downloading ONNX Runtime Web v${ORT_VERSION} from npm…"
 
-echo "Downloading ONNX Runtime Web v${ORT_VERSION}…"
-for f in ort.min.js ort-wasm.wasm ort-wasm-simd.wasm; do
-    echo "  → $f"
-    curl -sL "${BASE}/${f}" -o "${LIB_DIR}/${f}"
-done
+TMP=$(mktemp -d)
+cd "$TMP"
+npm pack "onnxruntime-web@${ORT_VERSION}" --pack-destination .
+tar xzf onnxruntime-web-*.tgz
+
+cp package/dist/*.min.js      "$LIB_DIR/" 2>/dev/null || true
+cp package/dist/*.min.mjs     "$LIB_DIR/" 2>/dev/null || true
+cp package/dist/*.wasm        "$LIB_DIR/" 2>/dev/null || true
+cp package/dist/*.mjs         "$LIB_DIR/" 2>/dev/null || true
+
+cd - >/dev/null
+rm -rf "$TMP"
 
 echo ""
-echo "Done. Saved to ${LIB_DIR}/"
+echo "Files saved to ${LIB_DIR}/:"
+ls -lh "$LIB_DIR/"
+echo ""
+echo "Done."
