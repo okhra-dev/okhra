@@ -13,7 +13,9 @@
     }
   },
   "icons": {
-    "48": "icons/okhra_48px.png"
+    "16": "icons/okhra-16.png",
+    "48": "icons/okhra-48.png",
+    "128": "icons/okhra-128.png"
   },
   "background": {
     "service_worker": "background.js"
