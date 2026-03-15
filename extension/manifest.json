@@ -7,11 +7,11 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "48": "icons/okhra_48px.png",
+      "48": "icons/okhra_48px.png"
     }
   },
   "icons": {
-    "48": "icons/okhra_48px.png",
+    "48": "icons/okhra_48px.png"
   },
   "background": {
     "service_worker": "background.js"
