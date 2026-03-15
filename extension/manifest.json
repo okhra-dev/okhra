@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Okhra — AI Text Detector",
+  "name": "Okhra",
   "version": "1.0.0",
-  "description": "Detect AI-generated text. Runs locally — no data leaves your browser.",
+  "description": "A fast, accurate and open AI detector",
   "permissions": ["contextMenus", "storage"],
   "action": {
     "default_popup": "popup.html",
