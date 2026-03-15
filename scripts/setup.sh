@@ -1,28 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ORT_VERSION="${1:-1.22.0}"
+ORT_VERSION="1.17.3"
 LIB_DIR="$(dirname "$0")/../extension/lib"
 rm -rf "$LIB_DIR"
 mkdir -p "$LIB_DIR"
 
-echo "Downloading ONNX Runtime Web v${ORT_VERSION} from npm…"
+BASE="https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist"
 
-TMP=$(mktemp -d)
-cd "$TMP"
-npm pack "onnxruntime-web@${ORT_VERSION}" --pack-destination .
-tar xzf onnxruntime-web-*.tgz
+for f in ort.min.js ort-wasm.wasm ort-wasm-simd.wasm ort-wasm-simd-threaded.wasm; do
+    echo "Downloading $f…"
+    curl -sL "${BASE}/${f}" -o "${LIB_DIR}/${f}"
+done
 
-cp package/dist/*.min.js      "$LIB_DIR/" 2>/dev/null || true
-cp package/dist/*.min.mjs     "$LIB_DIR/" 2>/dev/null || true
-cp package/dist/*.wasm        "$LIB_DIR/" 2>/dev/null || true
-cp package/dist/*.mjs         "$LIB_DIR/" 2>/dev/null || true
-
-cd - >/dev/null
-rm -rf "$TMP"
-
-echo ""
-echo "Files saved to ${LIB_DIR}/:"
+echo "Done → ${LIB_DIR}/"
 ls -lh "$LIB_DIR/"
-echo ""
-echo "Done."
